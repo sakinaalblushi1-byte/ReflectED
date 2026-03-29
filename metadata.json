@@ -1,0 +1,5 @@
+{
+  "name": "ReflectED",
+  "description": "An AI-powered, interactive reflection and coaching system for pre-service ELT trainee teachers based on Gibbs Reflective Cycle.",
+  "requestFramePermissions": ["camera", "microphone"]
+}
