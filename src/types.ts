@@ -47,6 +47,7 @@ export interface ReflectionData {
   
   // AI Analysis
   aiFeedback?: {
+    summary?: string;
     depthScore: number; // 1-10 (Bloom's Taxonomy)
     teachingEffectiveness: string;
     classroomManagement: string;
@@ -75,6 +76,8 @@ export interface UserProfile {
   badges: string[];
   language: 'en' | 'ar';
   theme: 'light' | 'dark';
+  createdAt?: any;
+  role?: 'admin' | 'trainee' | 'supervisor';
 }
 
 export interface PeerFeedback {
@@ -84,6 +87,8 @@ export interface PeerFeedback {
   authorName: string;
   content: string;
   createdAt: any;
+  rating?: number;
+  isSupervisor?: boolean;
 }
 
 export interface SupervisorComment {

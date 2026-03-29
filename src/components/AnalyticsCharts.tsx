@@ -19,14 +19,14 @@ import {
   PolarRadiusAxis,
 } from 'recharts';
 
-const depthData = [
-  { name: 'Mon', depth: 4 },
-  { name: 'Tue', depth: 3 },
-  { name: 'Wed', depth: 7 },
-  { name: 'Thu', depth: 5 },
-  { name: 'Fri', depth: 8 },
-  { name: 'Sat', depth: 6 },
-  { name: 'Sun', depth: 9 },
+const defaultDepthData = [
+  { name: 'Mon', depth: 0 },
+  { name: 'Tue', depth: 0 },
+  { name: 'Wed', depth: 0 },
+  { name: 'Thu', depth: 0 },
+  { name: 'Fri', depth: 0 },
+  { name: 'Sat', depth: 0 },
+  { name: 'Sun', depth: 0 },
 ];
 
 const skillData = [
@@ -38,10 +38,11 @@ const skillData = [
   { subject: 'Tech Integration', A: 65, fullMark: 150 },
 ];
 
-export function ReflectionDepthChart() {
+export function ReflectionDepthChart({ data }: { data?: any[] }) {
+  const chartData = data && data.length > 0 ? data : defaultDepthData;
   return (
     <ResponsiveContainer width="100%" height={200}>
-      <LineChart data={depthData}>
+      <LineChart data={chartData}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
         <XAxis 
           dataKey="name" 

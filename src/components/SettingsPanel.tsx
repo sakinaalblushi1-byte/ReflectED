@@ -3,19 +3,40 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { Settings, Globe, Moon, Sun, Bell, Shield, User, LogOut } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Settings, Globe, Moon, Sun, Bell, Shield, User, LogOut, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { UserProfile } from '../types';
-import { auth } from '../firebase';
+import { auth, db, doc, updateDoc, handleFirestoreError, OperationType } from '../firebase';
+import { cn } from '../lib/utils';
 
 export default function SettingsPanel({ profile }: { profile: UserProfile | null }) {
-  const [language, setLanguage] = useState('en');
-  const [darkMode, setDarkMode] = useState(false);
-  const [notifications, setNotifications] = useState(true);
+  const [language, setLanguage] = useState(profile?.language || 'en');
+  const [theme, setTheme] = useState(profile?.theme || 'light');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (profile) {
+      setLanguage(profile.language);
+      setTheme(profile.theme);
+    }
+  }, [profile]);
 
   const handleLogout = () => {
     auth.signOut();
+  };
+
+  const updateProfile = async (updates: Partial<UserProfile>) => {
+    if (!profile) return;
+    setSaving(true);
+    const profilePath = `users/${profile.uid}`;
+    try {
+      await updateDoc(doc(db, profilePath), updates);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, profilePath);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -25,14 +46,18 @@ export default function SettingsPanel({ profile }: { profile: UserProfile | null
           <h1 className="text-3xl font-display font-bold text-slate-900">Settings</h1>
           <p className="text-slate-500">Manage your account preferences and application settings.</p>
         </div>
+        {saving && <Loader2 className="w-5 h-5 text-primary-500 animate-spin" />}
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="md:col-span-1 space-y-4">
           <div className="glass-card p-6 rounded-3xl flex flex-col items-center text-center space-y-4">
-            <div className="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center text-primary-600 font-bold text-2xl">
-              {profile?.displayName?.[0]}
-            </div>
+            <img
+              src={profile?.photoURL || `https://ui-avatars.com/api/?name=${profile?.displayName}`}
+              alt="Profile"
+              className="w-20 h-20 rounded-full border-4 border-primary-100"
+              referrerPolicy="no-referrer"
+            />
             <div className="space-y-1">
               <h3 className="font-bold text-slate-900">{profile?.displayName}</h3>
               <p className="text-sm text-slate-500">{profile?.email}</p>
@@ -65,7 +90,11 @@ export default function SettingsPanel({ profile }: { profile: UserProfile | null
                 </div>
                 <select
                   value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value as 'en' | 'ar';
+                    setLanguage(val);
+                    updateProfile({ language: val });
+                  }}
                   className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                 >
                   <option value="en">English (UK)</option>
@@ -85,40 +114,19 @@ export default function SettingsPanel({ profile }: { profile: UserProfile | null
                   <p className="text-xs text-slate-500">Switch between light and dark themes.</p>
                 </div>
                 <button
-                  onClick={() => setDarkMode(!darkMode)}
+                  onClick={() => {
+                    const newTheme = theme === 'light' ? 'dark' : 'light';
+                    setTheme(newTheme);
+                    updateProfile({ theme: newTheme });
+                  }}
                   className={cn(
                     "w-12 h-6 rounded-full transition-all relative",
-                    darkMode ? "bg-primary-600" : "bg-slate-200"
+                    theme === 'dark' ? "bg-primary-600" : "bg-slate-200"
                   )}
                 >
                   <div className={cn(
                     "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
-                    darkMode ? "left-7" : "left-1"
-                  )} />
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <h3 className="font-bold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-4">
-                <Bell size={18} className="text-primary-500" />
-                Notifications
-              </h3>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-slate-900">Push Notifications</p>
-                  <p className="text-xs text-slate-500">Get alerted about peer feedback and AI insights.</p>
-                </div>
-                <button
-                  onClick={() => setNotifications(!notifications)}
-                  className={cn(
-                    "w-12 h-6 rounded-full transition-all relative",
-                    notifications ? "bg-primary-600" : "bg-slate-200"
-                  )}
-                >
-                  <div className={cn(
-                    "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
-                    notifications ? "left-7" : "left-1"
+                    theme === 'dark' ? "left-7" : "left-1"
                   )} />
                 </button>
               </div>
@@ -128,8 +136,4 @@ export default function SettingsPanel({ profile }: { profile: UserProfile | null
       </div>
     </div>
   );
-}
-
-function cn(...classes: any[]) {
-  return classes.filter(Boolean).join(' ');
 }

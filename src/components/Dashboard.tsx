@@ -3,15 +3,59 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { UserProfile } from '../types';
+import React, { useState, useEffect } from 'react';
+import { UserProfile, ReflectionData } from '../types';
 import { ReflectionDepthChart, SkillGrowthChart } from './AnalyticsCharts';
-import { TrendingUp, Award, Zap, Calendar, ArrowUpRight, MessageSquare, Plus, Zap as ZapIcon } from 'lucide-react';
+import { TrendingUp, Award, Zap, Calendar, ArrowUpRight, MessageSquare, Plus, Zap as ZapIcon, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import QuickReflection from './QuickReflection';
+import { db, collection, query, where, orderBy, onSnapshot, handleFirestoreError, OperationType } from '../firebase';
 
 export default function Dashboard({ profile }: { profile: UserProfile | null }) {
   const [showQuickReflect, setShowQuickReflect] = useState(false);
+  const [reflections, setReflections] = useState<ReflectionData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!profile) return;
+
+    const reflectionsPath = 'reflections';
+    const q = query(
+      collection(db, reflectionsPath),
+      where('userId', '==', profile.uid),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReflectionData));
+      setReflections(data);
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, reflectionsPath);
+    });
+
+    return () => unsubscribe();
+  }, [profile]);
+
+  if (loading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
+      </div>
+    );
+  }
+
+  // Calculate stats from real data
+  const totalReflections = reflections.length;
+  const avgDepth = reflections.length > 0 
+    ? reflections.reduce((acc, curr) => acc + (curr.aiFeedback?.depthScore || 0), 0) / reflections.length 
+    : 0;
+  
+  // Prepare chart data
+  const depthChartData = reflections.slice(0, 7).reverse().map(ref => ({
+    name: ref.createdAt.toDate().toLocaleDateString('en-US', { weekday: 'short' }),
+    depth: ref.aiFeedback?.depthScore || 0
+  }));
 
   if (showQuickReflect) {
     return (
@@ -87,10 +131,12 @@ export default function Dashboard({ profile }: { profile: UserProfile | null }) 
           </div>
           <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">AI Insights</h3>
           <div className="flex items-baseline gap-2">
-            <p className="text-4xl font-display font-bold text-primary-600">12</p>
+            <p className="text-4xl font-display font-bold text-primary-600">{totalReflections}</p>
             <p className="text-sm font-bold text-slate-400">Total</p>
           </div>
-          <p className="mt-4 text-xs text-slate-500 font-medium italic">"Your instruction clarity improved by 15% this week!"</p>
+          <p className="mt-4 text-xs text-slate-500 font-medium italic">
+            {reflections[0]?.aiFeedback?.summary || '"Start your first reflection to get AI insights!"'}
+          </p>
         </div>
       </div>
 
@@ -100,7 +146,7 @@ export default function Dashboard({ profile }: { profile: UserProfile | null }) 
             <h2 className="text-xl font-bold text-slate-900">Reflection Depth Trend</h2>
             <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Bloom's Taxonomy</span>
           </div>
-          <ReflectionDepthChart />
+          <ReflectionDepthChart data={depthChartData} />
         </div>
         <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
           <div className="flex items-center justify-between">
@@ -124,14 +170,14 @@ export default function Dashboard({ profile }: { profile: UserProfile | null }) 
         <h2 className="text-xl font-bold mb-6">Recent AI Feedback Summary</h2>
         <div className="space-y-4">
           {[
-            { title: 'Classroom Management', score: 85, color: 'bg-green-500' },
-            { title: 'Instruction Clarity', score: 72, color: 'bg-primary-500' },
-            { title: 'Student Engagement', score: 64, color: 'bg-amber-500' },
+            { title: 'Classroom Management', score: Math.round((reflections[0]?.aiFeedback?.depthScore || 0) * 10), color: 'bg-green-500' },
+            { title: 'Instruction Clarity', score: Math.round((reflections[1]?.aiFeedback?.depthScore || 0) * 10), color: 'bg-primary-500' },
+            { title: 'Student Engagement', score: Math.round((reflections[2]?.aiFeedback?.depthScore || 0) * 10), color: 'bg-amber-500' },
           ].map((item) => (
             <div key={item.title} className="space-y-2">
               <div className="flex justify-between text-sm font-bold">
                 <span className="text-slate-700">{item.title}</span>
-                <span className="text-slate-500">{item.score}%</span>
+                <span className="text-slate-500">{item.score > 0 ? `${item.score}%` : 'N/A'}</span>
               </div>
               <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                 <div className={cn("h-full transition-all duration-1000", item.color)} style={{ width: `${item.score}%` }} />

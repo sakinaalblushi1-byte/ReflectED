@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { Zap, Send, BrainCircuit } from 'lucide-react';
 import { motion } from 'motion/react';
 import { analyzeReflection } from '../services/gemini';
-import { db, collection, addDoc, Timestamp } from '../firebase';
+import { db, collection, addDoc, Timestamp, handleFirestoreError, OperationType } from '../firebase';
 import { UserProfile, ReflectionData, LessonType, SkillFocus } from '../types';
 
 export default function QuickReflection({ profile, onComplete }: { profile: UserProfile | null, onComplete: () => void }) {
@@ -17,6 +17,7 @@ export default function QuickReflection({ profile, onComplete }: { profile: User
   const handleSubmit = async () => {
     if (!content.trim()) return;
     setIsAnalyzing(true);
+    const path = 'reflections';
     try {
       const reflectionData: Partial<ReflectionData> = {
         userId: profile?.uid || '',
@@ -41,10 +42,10 @@ export default function QuickReflection({ profile, onComplete }: { profile: User
         badgesEarned: [],
       };
 
-      await addDoc(collection(db, 'reflections'), finalReflection);
+      await addDoc(collection(db, path), finalReflection);
       onComplete();
     } catch (error) {
-      console.error('Quick reflection failed:', error);
+      handleFirestoreError(error, OperationType.WRITE, path);
     } finally {
       setIsAnalyzing(false);
     }

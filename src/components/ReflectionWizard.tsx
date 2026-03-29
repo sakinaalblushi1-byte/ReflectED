@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ChevronRight, ChevronLeft, Sparkles, CheckCircle2, MessageSquare, BrainCircuit } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { analyzeReflection, generateAdaptiveQuestions } from '../services/gemini';
-import { db, collection, addDoc, Timestamp } from '../firebase';
+import { db, collection, addDoc, Timestamp, handleFirestoreError, OperationType } from '../firebase';
 import ReflectionReport from './ReflectionReport';
 
 export default function ReflectionWizard({ profile, onComplete }: { profile: UserProfile | null, onComplete: () => void }) {
@@ -66,7 +66,12 @@ export default function ReflectionWizard({ profile, onComplete }: { profile: Use
         };
 
         // Save to Firestore
-        await addDoc(collection(db, 'reflections'), finalReflection);
+        const reflectionsPath = 'reflections';
+        try {
+          await addDoc(collection(db, reflectionsPath), finalReflection);
+        } catch (error) {
+          handleFirestoreError(error, OperationType.CREATE, reflectionsPath);
+        }
         
         setAnalysisResult(finalReflection);
       } catch (error) {
