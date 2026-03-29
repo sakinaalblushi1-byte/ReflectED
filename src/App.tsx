@@ -48,6 +48,7 @@ export default function App() {
   const [displayName, setDisplayName] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
+  const [showAuthForm, setShowAuthForm] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -152,8 +153,6 @@ export default function App() {
       </div>
     );
   }
-
-  const [showAuthForm, setShowAuthForm] = useState(false);
 
   if (!user && !showAuthForm) {
     return (
