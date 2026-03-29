@@ -12,6 +12,7 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   sendPasswordResetEmail,
+  signInAnonymously,
   db, 
   doc, 
   getDoc, 
@@ -70,8 +71,8 @@ export default function App() {
         } else {
           const newProfile: UserProfile = {
             uid: currentUser.uid,
-            email: currentUser.email || '',
-            displayName: currentUser.displayName || 'Trainee Teacher',
+            email: currentUser.email || 'guest@reflected.app',
+            displayName: currentUser.displayName || (currentUser.isAnonymous ? 'Guest Teacher' : 'Trainee Teacher'),
             photoURL: currentUser.photoURL || null,
             level: 1,
             xp: 0,
@@ -104,6 +105,16 @@ export default function App() {
       await signInWithPopup(auth, googleProvider);
     } catch (error: any) {
       console.error('Login failed:', error);
+      setAuthError(error.message);
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    setAuthError(null);
+    try {
+      await signInAnonymously(auth);
+    } catch (error: any) {
+      console.error('Guest login failed:', error);
       setAuthError(error.message);
     }
   };
@@ -202,6 +213,12 @@ export default function App() {
               className="px-8 py-4 bg-white text-slate-700 border-2 border-slate-100 rounded-2xl font-bold text-lg hover:bg-slate-50 transition-all transform hover:scale-105 active:scale-95"
             >
               Sign In
+            </button>
+            <button
+              onClick={handleGuestLogin}
+              className="px-8 py-4 bg-slate-100 text-slate-700 rounded-2xl font-bold text-lg hover:bg-slate-200 transition-all transform hover:scale-105 active:scale-95"
+            >
+              Continue as Guest
             </button>
           </div>
 
@@ -401,6 +418,13 @@ export default function App() {
               >
                 <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
                 Google
+              </button>
+              <button
+                onClick={handleGuestLogin}
+                className="w-full py-3 px-6 bg-slate-100 text-slate-700 rounded-xl font-medium flex items-center justify-center gap-3 hover:bg-slate-200 transition-all"
+              >
+                <UserIcon size={20} />
+                Continue as Guest
               </button>
             </div>
 
