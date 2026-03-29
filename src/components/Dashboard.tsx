@@ -9,7 +9,7 @@ import { ReflectionDepthChart, SkillGrowthChart } from './AnalyticsCharts';
 import { TrendingUp, Award, Zap, Calendar, ArrowUpRight, MessageSquare, Plus, Zap as ZapIcon, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import QuickReflection from './QuickReflection';
-import { db, collection, query, where, orderBy, onSnapshot, handleFirestoreError, OperationType } from '../firebase';
+import { storage } from '../lib/storage';
 
 export default function Dashboard({ profile }: { profile: UserProfile | null }) {
   const [showQuickReflect, setShowQuickReflect] = useState(false);
@@ -19,22 +19,10 @@ export default function Dashboard({ profile }: { profile: UserProfile | null }) 
   useEffect(() => {
     if (!profile) return;
 
-    const reflectionsPath = 'reflections';
-    const q = query(
-      collection(db, reflectionsPath),
-      where('userId', '==', profile.uid),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReflectionData));
-      setReflections(data);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, reflectionsPath);
-    });
-
-    return () => unsubscribe();
+    // Load reflections from local storage
+    const data = storage.getReflections();
+    setReflections(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    setLoading(false);
   }, [profile]);
 
   if (loading) {
@@ -53,7 +41,7 @@ export default function Dashboard({ profile }: { profile: UserProfile | null }) 
   
   // Prepare chart data
   const depthChartData = reflections.slice(0, 7).reverse().map(ref => ({
-    name: ref.createdAt.toDate().toLocaleDateString('en-US', { weekday: 'short' }),
+    name: new Date(ref.createdAt).toLocaleDateString('en-US', { weekday: 'short' }),
     depth: ref.aiFeedback?.depthScore || 0
   }));
 

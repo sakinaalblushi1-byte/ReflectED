@@ -7,8 +7,43 @@ import React, { useState, useEffect } from 'react';
 import { Users, MessageSquare, Star, ShieldCheck, Send, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { UserProfile, PeerFeedback, ReflectionData } from '../types';
-import { db, collection, query, where, orderBy, onSnapshot, addDoc, Timestamp, handleFirestoreError, OperationType } from '../firebase';
+import { storage } from '../lib/storage';
 import { cn } from '../lib/utils';
+
+const MOCK_PEERS: ReflectionData[] = [
+  {
+    id: 'mock_1',
+    userId: 'peer_1',
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+    lessonType: 'PPP' as any,
+    skillFocus: ['Speaking' as any],
+    week: 1,
+    description: 'The students were very engaged during the controlled practice, but the production stage was a bit chaotic.',
+    feelings: 'I felt a bit overwhelmed.',
+    evaluation: 'Good engagement.',
+    analysis: 'Need better instructions.',
+    conclusion: 'I will prepare more clear instructions next time.',
+    actionPlan: 'Write instructions on the board.',
+    xpEarned: 120,
+    badgesEarned: [],
+  },
+  {
+    id: 'mock_2',
+    userId: 'peer_2',
+    createdAt: new Date(Date.now() - 172800000).toISOString(),
+    lessonType: 'TBLT' as any,
+    skillFocus: ['Listening' as any],
+    week: 1,
+    description: 'The task was too difficult for the level, but they tried their best.',
+    feelings: 'Encouraged by their effort.',
+    evaluation: 'Task difficulty was high.',
+    analysis: 'Scaffolding was insufficient.',
+    conclusion: 'I need to break down the task more.',
+    actionPlan: 'Use more pre-teaching.',
+    xpEarned: 110,
+    badgesEarned: [],
+  }
+];
 
 export default function PeerCollaboration({ profile }: { profile: UserProfile | null }) {
   const [activeTab, setActiveTab] = useState<'peer' | 'supervisor'>('peer');
@@ -19,74 +54,50 @@ export default function PeerCollaboration({ profile }: { profile: UserProfile | 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  // Fetch all reflections (except current user's if we want, but for now all)
   useEffect(() => {
     if (!profile) return;
 
-    const reflectionsPath = 'reflections';
-    const q = query(
-      collection(db, reflectionsPath),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReflectionData));
-      setReflections(data);
-      if (data.length > 0 && !selectedReflection) {
-        setSelectedReflection(data[0]);
-      }
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, reflectionsPath);
-    });
-
-    return () => unsubscribe();
+    // Load user's reflections + mock peers
+    const userReflections = storage.getReflections();
+    const allReflections = [...userReflections, ...MOCK_PEERS].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+    setReflections(allReflections);
+    if (allReflections.length > 0 && !selectedReflection) {
+      setSelectedReflection(allReflections[0]);
+    }
+    setLoading(false);
   }, [profile]);
 
-  // Fetch feedback for selected reflection
   useEffect(() => {
     if (!selectedReflection) return;
 
-    const feedbackPath = 'peerFeedback';
-    const q = query(
-      collection(db, feedbackPath),
-      where('reflectionId', '==', selectedReflection.id),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PeerFeedback));
-      setFeedbacks(data);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, feedbackPath);
-    });
-
-    return () => unsubscribe();
+    // Load feedback from local storage
+    const data = storage.getFeedback(selectedReflection.id);
+    setFeedbacks(data);
   }, [selectedReflection]);
 
   const handlePostFeedback = async () => {
     if (!profile || !selectedReflection || !feedback.trim()) return;
 
     setSubmitting(true);
-    const feedbackPath = 'peerFeedback';
-    try {
-      const newFeedback: Partial<PeerFeedback> = {
+    // Simulate delay
+    setTimeout(() => {
+      const newFeedback: PeerFeedback = {
+        id: 'fb_' + Math.random().toString(36).substr(2, 9),
         reflectionId: selectedReflection.id,
         authorId: profile.uid,
         authorName: profile.displayName,
         content: feedback,
-        rating: 5, // Default rating
+        rating: 5,
         isSupervisor: profile.role === 'supervisor' || profile.role === 'admin',
-        createdAt: Timestamp.now(),
+        createdAt: new Date().toISOString(),
       };
 
-      await addDoc(collection(db, feedbackPath), newFeedback);
+      storage.saveFeedback(newFeedback);
+      setFeedbacks(prev => [newFeedback, ...prev]);
       setFeedback('');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, feedbackPath);
-    } finally {
       setSubmitting(false);
-    }
+    }, 500);
   };
 
   if (loading) {
@@ -187,7 +198,7 @@ export default function PeerCollaboration({ profile }: { profile: UserProfile | 
                           <div>
                             <h4 className="font-bold text-slate-900">{f.authorName}</h4>
                             <p className="text-xs text-slate-500">
-                              {f.createdAt instanceof Timestamp ? f.createdAt.toDate().toLocaleDateString() : 'Just now'}
+                              {new Date(f.createdAt).toLocaleDateString()}
                             </p>
                           </div>
                         </div>

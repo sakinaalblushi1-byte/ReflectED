@@ -4,23 +4,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { 
-  auth, 
-  signInAnonymously,
-  signOut,
-  db, 
-  doc, 
-  getDoc, 
-  setDoc,
-  Timestamp,
-  handleFirestoreError,
-  OperationType 
-} from './firebase';
-import { onAuthStateChanged, User } from 'firebase/auth';
 import { UserProfile } from './types';
 import { LogOut, LayoutDashboard, PenTool, Award, Users, Settings, Menu, X, Sparkles, Video, User as UserIcon, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
+import { storage } from './lib/storage';
 
 // Components
 import Dashboard from './components/Dashboard';
@@ -31,7 +19,7 @@ import PeerCollaboration from './components/PeerCollaboration';
 import SettingsPanel from './components/SettingsPanel';
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<{ uid: string; displayName: string } | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'reflect' | 'video' | 'gamification' | 'collaboration' | 'settings'>('dashboard');
@@ -39,81 +27,53 @@ export default function App() {
   
   // Auth State
   const [guestName, setGuestName] = useState('');
-  const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        // Fetch or create profile
-        const profilePath = `users/${currentUser.uid}`;
-        const profileRef = doc(db, profilePath);
-        let profileSnap;
-        try {
-          profileSnap = await getDoc(profileRef);
-        } catch (error) {
-          handleFirestoreError(error, OperationType.GET, profilePath);
-          return;
-        }
-        
-        if (profileSnap.exists()) {
-          setProfile(profileSnap.data() as UserProfile);
-        } else {
-          const newProfile: UserProfile = {
-            uid: currentUser.uid,
-            email: currentUser.email || 'guest@reflected.app',
-            displayName: currentUser.displayName || (currentUser.isAnonymous ? (guestName || 'Guest Teacher') : 'Trainee Teacher'),
-            photoURL: currentUser.photoURL || null,
-            level: 1,
-            xp: 0,
-            streak: 0,
-            badges: [],
-            language: 'en',
-            theme: 'light',
-            createdAt: Timestamp.now(),
-            role: 'trainee',
-          };
-          try {
-            await setDoc(profileRef, newProfile);
-            setProfile(newProfile);
-          } catch (error) {
-            handleFirestoreError(error, OperationType.WRITE, profilePath);
-          }
-        }
-      } else {
-        setProfile(null);
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [guestName]);
+    const savedProfile = storage.getProfile();
+    if (savedProfile) {
+      setUser({ uid: savedProfile.uid, displayName: savedProfile.displayName });
+      setProfile(savedProfile);
+    }
+    setLoading(false);
+  }, []);
 
   const handleStart = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!guestName.trim()) return;
     
-    setAuthError(null);
     setAuthLoading(true);
-    try {
-      await signInAnonymously(auth);
-    } catch (error: any) {
-      console.error('Start failed:', error);
-      setAuthError(error.message);
-    } finally {
+    // Simulate a short delay for better UX
+    setTimeout(() => {
+      const uid = 'user_' + Math.random().toString(36).substr(2, 9);
+      const newProfile: UserProfile = {
+        uid,
+        email: 'guest@reflected.app',
+        displayName: guestName,
+        photoURL: null,
+        level: 1,
+        xp: 0,
+        streak: 0,
+        badges: [],
+        language: 'en',
+        theme: 'light',
+        createdAt: new Date().toISOString(),
+        role: 'trainee',
+      };
+      
+      storage.saveProfile(newProfile);
+      setUser({ uid, displayName: guestName });
+      setProfile(newProfile);
       setAuthLoading(false);
-    }
+    }, 800);
   };
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setActiveTab('dashboard');
-      setGuestName('');
-    } catch (error) {
-      console.error('Logout failed:', error);
-    }
+  const handleLogout = () => {
+    storage.clearAll();
+    setUser(null);
+    setProfile(null);
+    setActiveTab('dashboard');
+    setGuestName('');
   };
 
   if (loading) {
@@ -169,12 +129,6 @@ export default function App() {
                 className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all text-lg"
               />
             </div>
-
-            {authError && (
-              <p className="text-sm text-red-500 bg-red-50 p-3 rounded-lg border border-red-100">
-                {authError}
-              </p>
-            )}
 
             <button
               type="submit"
