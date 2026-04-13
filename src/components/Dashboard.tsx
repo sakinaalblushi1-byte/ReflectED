@@ -9,7 +9,8 @@ import { ReflectionDepthChart, SkillGrowthChart } from './AnalyticsCharts';
 import { TrendingUp, Award, Zap, Calendar, ArrowUpRight, MessageSquare, Plus, Zap as ZapIcon, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import QuickReflection from './QuickReflection';
-import { storage } from '../lib/storage';
+import { db } from '../lib/firebase';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 
 export default function Dashboard({ profile }: { profile: UserProfile | null }) {
   const [showQuickReflect, setShowQuickReflect] = useState(false);
@@ -19,10 +20,24 @@ export default function Dashboard({ profile }: { profile: UserProfile | null }) 
   useEffect(() => {
     if (!profile) return;
 
-    // Load reflections from local storage
-    const data = storage.getReflections();
-    setReflections(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-    setLoading(false);
+    // Load reflections from Firestore
+    const reflectionsRef = collection(db, 'reflections');
+    const q = query(
+      reflectionsRef, 
+      where('userId', '==', profile.uid),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReflectionData));
+      setReflections(data);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching reflections:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, [profile]);
 
   if (loading) {

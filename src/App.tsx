@@ -8,7 +8,9 @@ import { UserProfile } from './types';
 import { LogOut, LayoutDashboard, PenTool, Award, Users, Settings, Menu, X, Sparkles, Video, User as UserIcon, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
-import { storage } from './lib/storage';
+import { auth, db, googleProvider } from './lib/firebase';
+import { onAuthStateChanged, signInAnonymously, signOut, signInWithPopup } from 'firebase/auth';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 
 // Components
 import Dashboard from './components/Dashboard';
@@ -19,7 +21,7 @@ import PeerCollaboration from './components/PeerCollaboration';
 import SettingsPanel from './components/SettingsPanel';
 
 export default function App() {
-  const [user, setUser] = useState<{ uid: string; displayName: string } | null>(null);
+  const [user, setUser] = useState<{ uid: string; displayName: string | null; email: string | null } | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'reflect' | 'video' | 'gamification' | 'collaboration' | 'settings'>('dashboard');
@@ -31,12 +33,34 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
 
   useEffect(() => {
-    const savedProfile = storage.getProfile();
-    if (savedProfile) {
-      setUser({ uid: savedProfile.uid, displayName: savedProfile.displayName });
-      setProfile(savedProfile);
-    }
-    setLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        setUser({ 
+          uid: firebaseUser.uid, 
+          displayName: firebaseUser.displayName,
+          email: firebaseUser.email 
+        });
+        
+        // Listen to profile changes
+        const profileRef = doc(db, 'users', firebaseUser.uid);
+        const unsubProfile = onSnapshot(profileRef, (docSnap) => {
+          if (docSnap.exists()) {
+            setProfile(docSnap.data() as UserProfile);
+          } else {
+            setProfile(null);
+          }
+          setLoading(false);
+        });
+
+        return () => unsubProfile();
+      } else {
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const handleStart = async (e: React.FormEvent) => {
@@ -44,15 +68,17 @@ export default function App() {
     if (!guestName.trim() || !collegeId.trim()) return;
     
     setAuthLoading(true);
-    // Simulate a short delay for better UX
-    setTimeout(() => {
-      const uid = 'user_' + Math.random().toString(36).substr(2, 9);
+    try {
+      // Use anonymous auth for simplicity as requested "write their name"
+      const userCredential = await signInAnonymously(auth);
+      const firebaseUser = userCredential.user;
+
       const newProfile: UserProfile = {
-        uid,
-        email: 'guest@reflected.app',
+        uid: firebaseUser.uid,
+        email: firebaseUser.email || 'anonymous@reflected.app',
         displayName: guestName,
         collegeId: collegeId,
-        photoURL: null,
+        photoURL: firebaseUser.photoURL || null,
         level: 1,
         xp: 0,
         streak: 0,
@@ -63,20 +89,34 @@ export default function App() {
         role: 'trainee',
       };
       
-      storage.saveProfile(newProfile);
-      setUser({ uid, displayName: guestName });
-      setProfile(newProfile);
+      await setDoc(doc(db, 'users', firebaseUser.uid), newProfile);
+    } catch (error) {
+      console.error("Error signing in:", error);
+    } finally {
       setAuthLoading(false);
-    }, 800);
+    }
   };
 
-  const handleLogout = () => {
-    storage.clearAll();
-    setUser(null);
-    setProfile(null);
-    setActiveTab('dashboard');
-    setGuestName('');
-    setCollegeId('');
+  const handleGoogleSignIn = async () => {
+    setAuthLoading(true);
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Error with Google sign in:", error);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setActiveTab('dashboard');
+      setGuestName('');
+      setCollegeId('');
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
   };
 
   if (loading) {
@@ -91,7 +131,7 @@ export default function App() {
     );
   }
 
-  if (!user) {
+  if (!user || !profile) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center overflow-hidden relative">
         {/* Background Decorations */}
@@ -120,48 +160,120 @@ export default function App() {
             </p>
           </div>
 
-          <form onSubmit={handleStart} className="space-y-4 pt-8">
-            <div className="space-y-4">
-              <div className="relative">
-                <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                <input
-                  type="text"
-                  placeholder="Full Name"
-                  required
-                  value={guestName}
-                  onChange={(e) => setGuestName(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all text-lg"
-                />
+          {!user ? (
+            <form onSubmit={handleStart} className="space-y-4 pt-8">
+              <div className="space-y-4">
+                <div className="relative">
+                  <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                  <input
+                    type="text"
+                    placeholder="Full Name"
+                    required
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all text-lg"
+                  />
+                </div>
+
+                <div className="relative">
+                  <Award className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                  <input
+                    type="text"
+                    placeholder="College ID"
+                    required
+                    value={collegeId}
+                    onChange={(e) => setCollegeId(e.target.value)}
+                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all text-lg"
+                  />
+                </div>
               </div>
 
-              <div className="relative">
-                <Award className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                <input
-                  type="text"
-                  placeholder="College ID"
-                  required
-                  value={collegeId}
-                  onChange={(e) => setCollegeId(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all text-lg"
-                />
+              <button
+                type="submit"
+                disabled={authLoading || !guestName.trim() || !collegeId.trim()}
+                className="w-full py-4 px-8 bg-primary-600 hover:bg-primary-700 text-white rounded-2xl font-bold text-xl shadow-xl shadow-primary-200 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-3"
+              >
+                {authLoading ? (
+                  <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    Start Reflecting
+                    <ArrowRight size={24} />
+                  </>
+                )}
+              </button>
+
+              <div className="relative py-4">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-200"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-slate-500 uppercase tracking-wider font-bold text-xs">Or</span>
+                </div>
               </div>
+
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={authLoading}
+                className="w-full py-4 px-8 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-bold text-lg shadow-sm transition-all flex items-center justify-center gap-3"
+              >
+                <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
+                Sign in with Google
+              </button>
+            </form>
+          ) : (
+            <div className="space-y-6 pt-8">
+              <div className="p-6 bg-primary-50 rounded-3xl border border-primary-100">
+                <p className="text-primary-800 font-medium">Welcome, {user.email}!</p>
+                <p className="text-primary-600 text-sm mt-1">Please complete your profile to continue.</p>
+              </div>
+              <form onSubmit={handleStart} className="space-y-4">
+                <div className="space-y-4 text-left">
+                  <label className="block text-sm font-bold text-slate-700 ml-1">Display Name</label>
+                  <div className="relative">
+                    <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <input
+                      type="text"
+                      placeholder="Full Name"
+                      required
+                      value={guestName}
+                      onChange={(e) => setGuestName(e.target.value)}
+                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all text-lg"
+                    />
+                  </div>
+
+                  <label className="block text-sm font-bold text-slate-700 ml-1">College ID</label>
+                  <div className="relative">
+                    <Award className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <input
+                      type="text"
+                      placeholder="College ID"
+                      required
+                      value={collegeId}
+                      onChange={(e) => setCollegeId(e.target.value)}
+                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all text-lg"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={authLoading || !guestName.trim() || !collegeId.trim()}
+                  className="w-full py-4 px-8 bg-primary-600 hover:bg-primary-700 text-white rounded-2xl font-bold text-xl shadow-xl shadow-primary-200 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-3"
+                >
+                  {authLoading ? (
+                    <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      Complete Profile
+                      <ArrowRight size={24} />
+                    </>
+                  )}
+                </button>
+              </form>
             </div>
-
-            <button
-              type="submit"
-              disabled={authLoading || !guestName.trim() || !collegeId.trim()}
-              className="w-full py-4 px-8 bg-primary-600 hover:bg-primary-700 text-white rounded-2xl font-bold text-xl shadow-xl shadow-primary-200 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-3"
-            >
-              {authLoading ? (
-                <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>
-                  Start Reflecting
-                  <ArrowRight size={24} />
-                </>
-              )}
-            </button>
-          </form>
+          )}
         </motion.div>
       </div>
     );

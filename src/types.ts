@@ -92,11 +92,12 @@ export interface PeerFeedback {
   isSupervisor?: boolean;
 }
 
-export interface SupervisorComment {
+export interface Invitation {
   id: string;
-  reflectionId: string;
-  supervisorId: string;
-  supervisorName: string;
-  content: string;
-  createdAt: any;
+  senderId: string;
+  senderName: string;
+  email: string;
+  role: 'peer' | 'supervisor';
+  status: 'pending' | 'accepted';
+  createdAt: string;
 }

@@ -7,7 +7,8 @@ import React, { useState } from 'react';
 import { Zap, Send, BrainCircuit } from 'lucide-react';
 import { motion } from 'motion/react';
 import { analyzeReflection } from '../services/gemini';
-import { storage } from '../lib/storage';
+import { db } from '../lib/firebase';
+import { collection, addDoc, doc, updateDoc, increment } from 'firebase/firestore';
 import { UserProfile, ReflectionData, LessonType, SkillFocus } from '../types';
 
 export default function QuickReflection({ profile, onComplete }: { profile: UserProfile | null, onComplete: () => void }) {
@@ -33,16 +34,27 @@ export default function QuickReflection({ profile, onComplete }: { profile: User
 
       const aiFeedback = await analyzeReflection(reflectionData);
       
-      const finalReflection: ReflectionData = {
+      const xpEarned = 50;
+      const finalReflection: Omit<ReflectionData, 'id'> = {
         ...reflectionData as ReflectionData,
-        id: 'ref_' + Math.random().toString(36).substr(2, 9),
         createdAt: new Date().toISOString(),
         aiFeedback,
-        xpEarned: 50,
+        xpEarned,
         badgesEarned: [],
       };
 
-      storage.saveReflection(finalReflection);
+      // Save to Firestore
+      await addDoc(collection(db, 'reflections'), finalReflection);
+      
+      // Update user XP
+      if (profile) {
+        const userRef = doc(db, 'users', profile.uid);
+        await updateDoc(userRef, {
+          xp: increment(xpEarned),
+          lastReflectionDate: new Date().toISOString()
+        });
+      }
+
       onComplete();
     } catch (error) {
       console.error('Quick reflection failed:', error);

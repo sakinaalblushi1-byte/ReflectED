@@ -4,12 +4,14 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Users, MessageSquare, Star, ShieldCheck, Send, Loader2 } from 'lucide-react';
-import { motion } from 'motion/react';
-import { UserProfile, PeerFeedback, ReflectionData } from '../types';
-import { storage } from '../lib/storage';
+import { Users, MessageSquare, Star, ShieldCheck, Send, Loader2, Mail, Plus, Trash2, CheckCircle2, Clock, Copy, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { UserProfile, PeerFeedback, ReflectionData, Invitation } from '../types';
+import { db } from '../lib/firebase';
+import { collection, query, where, orderBy, onSnapshot, addDoc, deleteDoc, doc, updateDoc, getDocs } from 'firebase/firestore';
 import { cn } from '../lib/utils';
 
+// We'll keep mock peers for demo if no real peers exist yet
 const MOCK_PEERS: ReflectionData[] = [
   {
     id: 'mock_1',
@@ -49,41 +51,88 @@ export default function PeerCollaboration({ profile }: { profile: UserProfile | 
   const [activeTab, setActiveTab] = useState<'peer' | 'supervisor'>('peer');
   const [feedback, setFeedback] = useState('');
   const [reflections, setReflections] = useState<ReflectionData[]>([]);
+  const [peerReflections, setPeerReflections] = useState<ReflectionData[]>([]);
   const [selectedReflection, setSelectedReflection] = useState<ReflectionData | null>(null);
   const [feedbacks, setFeedbacks] = useState<PeerFeedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  
+  // Invitation State
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<'peer' | 'supervisor'>('peer');
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [receivedInvitations, setReceivedInvitations] = useState<any[]>([]);
+  const [isInviting, setIsInviting] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
 
-    // Load user's reflections + mock peers
-    const userReflections = storage.getReflections();
-    const allReflections = [...userReflections, ...MOCK_PEERS].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Load user's reflections
+    const reflectionsRef = collection(db, 'reflections');
+    const q = query(reflectionsRef, where('userId', '==', profile.uid), orderBy('createdAt', 'desc'));
     
-    setReflections(allReflections);
-    if (allReflections.length > 0 && !selectedReflection) {
-      setSelectedReflection(allReflections[0]);
-    }
-    setLoading(false);
+    const unsubReflections = onSnapshot(q, (snapshot) => {
+      const userReflections = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReflectionData));
+      // For demo, we still mix with mock peers if empty
+      const allReflections = userReflections.length > 0 ? userReflections : [...MOCK_PEERS];
+      setReflections(allReflections);
+      if (allReflections.length > 0 && !selectedReflection) {
+        setSelectedReflection(allReflections[0]);
+      }
+      setLoading(false);
+    });
+
+    // Load invitations sent by user
+    const invitationsRef = collection(db, 'invitations');
+    const qInv = query(invitationsRef, where('senderId', '==', profile.uid), orderBy('createdAt', 'desc'));
+    const unsubInvitations = onSnapshot(qInv, (snapshot) => {
+      setInvitations(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
+    });
+
+    // Load invitations received by user
+    const qReceived = query(invitationsRef, where('email', '==', profile.email?.toLowerCase()), orderBy('createdAt', 'desc'));
+    const unsubReceived = onSnapshot(qReceived, async (snapshot) => {
+      const received = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      setReceivedInvitations(received);
+
+      // Fetch reflections from accepted invitations
+      const acceptedSenders = received.filter(inv => inv.status === 'accepted').map(inv => inv.senderId);
+      if (acceptedSenders.length > 0) {
+        const qPeers = query(reflectionsRef, where('userId', 'in', acceptedSenders), orderBy('createdAt', 'desc'));
+        const querySnapshot = await getDocs(qPeers);
+        setPeerReflections(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReflectionData)));
+      } else {
+        setPeerReflections([]);
+      }
+    });
+
+    return () => {
+      unsubReflections();
+      unsubInvitations();
+      unsubReceived();
+    };
   }, [profile]);
 
   useEffect(() => {
     if (!selectedReflection) return;
 
-    // Load feedback from local storage
-    const data = storage.getFeedback(selectedReflection.id);
-    setFeedbacks(data);
+    // Load feedback from Firestore
+    const feedbackRef = collection(db, 'reflections', selectedReflection.id, 'feedback');
+    const q = query(feedbackRef, orderBy('createdAt', 'desc'));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setFeedbacks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PeerFeedback)));
+    });
+
+    return () => unsubscribe();
   }, [selectedReflection]);
 
   const handlePostFeedback = async () => {
     if (!profile || !selectedReflection || !feedback.trim()) return;
 
     setSubmitting(true);
-    // Simulate delay
-    setTimeout(() => {
-      const newFeedback: PeerFeedback = {
-        id: 'fb_' + Math.random().toString(36).substr(2, 9),
+    try {
+      const newFeedback: Omit<PeerFeedback, 'id'> = {
         reflectionId: selectedReflection.id,
         authorId: profile.uid,
         authorName: profile.displayName,
@@ -93,11 +142,70 @@ export default function PeerCollaboration({ profile }: { profile: UserProfile | 
         createdAt: new Date().toISOString(),
       };
 
-      storage.saveFeedback(newFeedback);
-      setFeedbacks(prev => [newFeedback, ...prev]);
+      await addDoc(collection(db, 'reflections', selectedReflection.id, 'feedback'), newFeedback);
       setFeedback('');
+    } catch (error) {
+      console.error("Error posting feedback:", error);
+    } finally {
       setSubmitting(false);
-    }, 500);
+    }
+  };
+
+  const handleSendInvitation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile || !inviteEmail.trim()) return;
+
+    setIsInviting(true);
+    try {
+      const newInvitation = {
+        senderId: profile.uid,
+        senderName: profile.displayName,
+        email: inviteEmail.toLowerCase(),
+        role: inviteRole,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      };
+
+      await addDoc(collection(db, 'invitations'), newInvitation);
+      setInviteEmail('');
+    } catch (error) {
+      console.error("Error sending invitation:", error);
+    } finally {
+      setIsInviting(false);
+    }
+  };
+
+  const handleAcceptInvitation = async (invitationId: string) => {
+    try {
+      await updateDoc(doc(db, 'invitations', invitationId), {
+        status: 'accepted'
+      });
+    } catch (error) {
+      console.error("Error accepting invitation:", error);
+    }
+  };
+
+  const handleDeleteInvitation = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'invitations', id));
+    } catch (error) {
+      console.error("Error deleting invitation:", error);
+    }
+  };
+
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const copyInviteLink = (id: string) => {
+    const link = `${window.location.origin}?invite=${id}`;
+    navigator.clipboard.writeText(link);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const generateInviteEmail = (email: string, role: string) => {
+    const subject = encodeURIComponent(`Invitation to collaborate on ReflectED`);
+    const body = encodeURIComponent(`Hi!\n\nI've invited you to be my ${role} on ReflectED, the AI-powered mentor for trainee teachers.\n\nPlease sign in at ${window.location.origin} using this email address to see my reflections and provide feedback.\n\nBest regards,\n${profile?.displayName}`);
+    window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
   };
 
   if (loading) {
@@ -142,24 +250,29 @@ export default function PeerCollaboration({ profile }: { profile: UserProfile | 
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
-          {/* Reflection Selector for Peers */}
-          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-            {reflections.map((ref) => (
-              <button
-                key={ref.id}
-                onClick={() => setSelectedReflection(ref)}
-                className={cn(
-                  "flex-shrink-0 px-6 py-4 rounded-3xl border-2 transition-all text-left space-y-2",
-                  selectedReflection?.id === ref.id
-                    ? "border-primary-500 bg-primary-50"
-                    : "border-slate-100 bg-white hover:border-slate-200"
-                )}
-              >
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{ref.lessonType}</p>
-                <p className="font-bold text-slate-900 line-clamp-1">{ref.description.substring(0, 30)}...</p>
-                <p className="text-[10px] text-slate-500">By {ref.userId === profile?.uid ? 'You' : 'Peer'}</p>
-              </button>
-            ))}
+          {/* Reflection Selector */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Reflections to Review</h3>
+            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+              {[...reflections, ...peerReflections, ...MOCK_PEERS].map((ref) => (
+                <button
+                  key={ref.id}
+                  onClick={() => setSelectedReflection(ref)}
+                  className={cn(
+                    "flex-shrink-0 px-6 py-4 rounded-3xl border-2 transition-all text-left space-y-2 w-64",
+                    selectedReflection?.id === ref.id
+                      ? "border-primary-500 bg-primary-50"
+                      : "border-slate-100 bg-white hover:border-slate-200"
+                  )}
+                >
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{ref.lessonType}</p>
+                  <p className="font-bold text-slate-900 line-clamp-1">{ref.description.substring(0, 30)}...</p>
+                  <p className="text-[10px] text-slate-500">
+                    {ref.userId === profile?.uid ? 'Your Reflection' : 'Peer Reflection'}
+                  </p>
+                </button>
+              ))}
+            </div>
           </div>
 
           {selectedReflection && (
@@ -223,6 +336,158 @@ export default function PeerCollaboration({ profile }: { profile: UserProfile | 
         </div>
 
         <div className="space-y-6">
+          <div className="glass-card p-6 rounded-3xl space-y-4 bg-white border border-slate-100 shadow-sm">
+            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+              <Mail size={18} className="text-primary-500" />
+              Invite Collaborators
+            </h3>
+            <p className="text-sm text-slate-500">
+              Invite your supervisor or peers to review your reflections. 
+              <span className="block mt-1 text-xs text-amber-600 font-medium">
+                Note: Automated emails require a service provider. Use the mail icon below after inviting to send a manual email.
+              </span>
+            </p>
+            <form onSubmit={handleSendInvitation} className="space-y-3">
+              <input
+                type="email"
+                placeholder="Collaborator's email"
+                required
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setInviteRole('peer')}
+                  className={cn(
+                    "flex-1 py-2 rounded-lg text-xs font-bold border transition-all",
+                    inviteRole === 'peer' ? "bg-primary-50 border-primary-200 text-primary-600" : "border-slate-100 text-slate-500"
+                  )}
+                >
+                  Peer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInviteRole('supervisor')}
+                  className={cn(
+                    "flex-1 py-2 rounded-lg text-xs font-bold border transition-all",
+                    inviteRole === 'supervisor' ? "bg-primary-50 border-primary-200 text-primary-600" : "border-slate-100 text-slate-500"
+                  )}
+                >
+                  Supervisor
+                </button>
+              </div>
+              <button
+                type="submit"
+                disabled={isInviting || !inviteEmail.trim()}
+                className="w-full py-3 bg-primary-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-primary-700 transition-all disabled:opacity-50"
+              >
+                {isInviting ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                Send Invitation
+              </button>
+            </form>
+          </div>
+
+          <div className="glass-card p-6 rounded-3xl space-y-4 bg-white border border-slate-100 shadow-sm">
+            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+              <Mail size={18} className="text-primary-500" />
+              Received Invitations
+            </h3>
+            <div className="space-y-3">
+              {receivedInvitations.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-4 italic">No invitations received.</p>
+              ) : (
+                receivedInvitations.map((inv) => (
+                  <div key={inv.id} className="p-4 bg-primary-50 rounded-2xl border border-primary-100 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">{inv.senderName}</p>
+                        <p className="text-xs text-slate-500">Invited you as {inv.role}</p>
+                      </div>
+                      <span className={cn(
+                        "text-[10px] font-bold uppercase px-2 py-1 rounded",
+                        inv.status === 'accepted' ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                      )}>
+                        {inv.status}
+                      </span>
+                    </div>
+                    {inv.status === 'pending' && (
+                      <button
+                        onClick={() => handleAcceptInvitation(inv.id)}
+                        className="w-full py-2 bg-primary-600 text-white rounded-xl text-xs font-bold hover:bg-primary-700 transition-all"
+                      >
+                        Accept Invitation
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="glass-card p-6 rounded-3xl space-y-4 bg-white border border-slate-100 shadow-sm">
+            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+              <Users size={18} className="text-primary-500" />
+              Sent Invitations
+            </h3>
+            <div className="space-y-3">
+              <AnimatePresence initial={false}>
+                {invitations.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-4 italic">No invitations sent yet.</p>
+                ) : (
+                  invitations.map((inv) => (
+                    <motion.div
+                      key={inv.id}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between group"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-900 truncate">{inv.email}</p>
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded",
+                            inv.role === 'supervisor' ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
+                          )}>
+                            {inv.role}
+                          </span>
+                          <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                            {inv.status === 'pending' ? <Clock size={10} /> : <CheckCircle2 size={10} />}
+                            {inv.status}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <button 
+                          onClick={() => copyInviteLink(inv.id)}
+                          className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
+                          title="Copy Invite Link"
+                        >
+                          {copiedId === inv.id ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                        </button>
+                        <button 
+                          onClick={() => generateInviteEmail(inv.email, inv.role)}
+                          className="p-2 text-primary-500 hover:bg-primary-50 rounded-lg"
+                          title="Send Email"
+                        >
+                          <Mail size={14} />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteInvitation(inv.id)}
+                          className="p-2 text-slate-400 hover:text-red-500 rounded-lg"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+
           <div className="glass-card p-6 rounded-3xl space-y-4 bg-white border border-slate-100 shadow-sm">
             <h3 className="font-bold text-slate-900 flex items-center gap-2">
               <MessageSquare size={18} className="text-primary-500" />

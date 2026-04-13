@@ -9,7 +9,16 @@ const STORAGE_KEYS = {
   PROFILE: 'reflected_profile',
   REFLECTIONS: 'reflected_reflections',
   FEEDBACK: 'reflected_feedback',
+  INVITATIONS: 'reflected_invitations',
 };
+
+export interface Invitation {
+  id: string;
+  email: string;
+  role: 'peer' | 'supervisor';
+  status: 'pending' | 'accepted';
+  createdAt: string;
+}
 
 export const storage = {
   getProfile: (): UserProfile | null => {
@@ -55,9 +64,26 @@ export const storage = {
     localStorage.setItem(STORAGE_KEYS.FEEDBACK, JSON.stringify(allFeedback));
   },
 
+  getInvitations: (): Invitation[] => {
+    const data = localStorage.getItem(STORAGE_KEYS.INVITATIONS);
+    return data ? JSON.parse(data) : [];
+  },
+
+  saveInvitation: (invitation: Invitation) => {
+    const invitations = storage.getInvitations();
+    invitations.push(invitation);
+    localStorage.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(invitations));
+  },
+
+  deleteInvitation: (id: string) => {
+    const invitations = storage.getInvitations().filter(i => i.id !== id);
+    localStorage.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(invitations));
+  },
+
   clearAll: () => {
     localStorage.removeItem(STORAGE_KEYS.PROFILE);
     localStorage.removeItem(STORAGE_KEYS.REFLECTIONS);
     localStorage.removeItem(STORAGE_KEYS.FEEDBACK);
+    localStorage.removeItem(STORAGE_KEYS.INVITATIONS);
   }
 };

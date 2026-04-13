@@ -7,7 +7,9 @@ import React, { useState, useEffect } from 'react';
 import { Settings, Globe, Moon, Sun, Bell, Shield, User, LogOut, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { UserProfile } from '../types';
-import { storage } from '../lib/storage';
+import { auth, db } from '../lib/firebase';
+import { signOut } from 'firebase/auth';
+import { doc, updateDoc } from 'firebase/firestore';
 import { cn } from '../lib/utils';
 
 export default function SettingsPanel({ profile }: { profile: UserProfile | null }) {
@@ -22,20 +24,25 @@ export default function SettingsPanel({ profile }: { profile: UserProfile | null
     }
   }, [profile]);
 
-  const handleLogout = () => {
-    storage.clearAll();
-    window.location.reload();
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
   };
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (!profile) return;
     setSaving(true);
-    // Simulate delay
-    setTimeout(() => {
-      const updatedProfile = { ...profile, ...updates };
-      storage.saveProfile(updatedProfile);
+    try {
+      const userRef = doc(db, 'users', profile.uid);
+      await updateDoc(userRef, updates);
+    } catch (error) {
+      console.error("Error updating profile:", error);
+    } finally {
       setSaving(false);
-    }, 500);
+    }
   };
 
   return (

@@ -10,7 +10,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ChevronRight, ChevronLeft, Sparkles, CheckCircle2, MessageSquare, BrainCircuit } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { analyzeReflection, generateAdaptiveQuestions } from '../services/gemini';
-import { storage } from '../lib/storage';
+import { db } from '../lib/firebase';
+import { collection, addDoc, doc, updateDoc, increment } from 'firebase/firestore';
 import ReflectionReport from './ReflectionReport';
 
 export default function ReflectionWizard({ profile, onComplete }: { profile: UserProfile | null, onComplete: () => void }) {
@@ -57,19 +58,31 @@ export default function ReflectionWizard({ profile, onComplete }: { profile: Use
 
         const aiFeedback = await analyzeReflection(reflectionData);
         
-        const finalReflection: ReflectionData = {
+        const xpEarned = 100 + (aiFeedback.depthScore * 10);
+        const badgesEarned = aiFeedback.depthScore >= 8 ? ['deep_thinker'] : [];
+
+        const finalReflection: Omit<ReflectionData, 'id'> = {
           ...reflectionData as ReflectionData,
-          id: 'ref_' + Math.random().toString(36).substr(2, 9),
           createdAt: new Date().toISOString(),
           aiFeedback,
-          xpEarned: 100 + (aiFeedback.depthScore * 10),
-          badgesEarned: aiFeedback.depthScore >= 8 ? ['deep_thinker'] : [],
+          xpEarned,
+          badgesEarned,
         };
 
-        // Save to local storage
-        storage.saveReflection(finalReflection);
+        // Save to Firestore
+        const docRef = await addDoc(collection(db, 'reflections'), finalReflection);
         
-        setAnalysisResult(finalReflection);
+        // Update user XP and Level
+        if (profile) {
+          const userRef = doc(db, 'users', profile.uid);
+          await updateDoc(userRef, {
+            xp: increment(xpEarned),
+            streak: increment(1), // Simple streak logic
+            lastReflectionDate: new Date().toISOString()
+          });
+        }
+        
+        setAnalysisResult({ id: docRef.id, ...finalReflection } as ReflectionData);
       } catch (error) {
         console.error('Analysis failed:', error);
       } finally {

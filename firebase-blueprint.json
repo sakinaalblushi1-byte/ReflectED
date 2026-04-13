@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user information and gamification progress",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique user ID" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "collegeId": { "type": "string" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "level": { "type": "number" },
+        "xp": { "type": "number" },
+        "streak": { "type": "number" },
+        "lastReflectionDate": { "type": "string", "format": "date-time" },
+        "badges": { "type": "array", "items": { "type": "string" } },
+        "language": { "type": "string", "enum": ["en", "ar"] },
+        "theme": { "type": "string", "enum": ["light", "dark"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "role": { "type": "string", "enum": ["admin", "trainee", "supervisor"] }
+      },
+      "required": ["uid", "email", "displayName", "collegeId"]
+    },
+    "Reflection": {
+      "title": "Reflection",
+      "description": "A teaching reflection based on Gibbs Cycle",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lessonType": { "type": "string" },
+        "skillFocus": { "type": "array", "items": { "type": "string" } },
+        "week": { "type": "number" },
+        "description": { "type": "string" },
+        "feelings": { "type": "string" },
+        "evaluation": { "type": "string" },
+        "analysis": { "type": "string" },
+        "conclusion": { "type": "string" },
+        "actionPlan": { "type": "string" },
+        "xpEarned": { "type": "number" },
+        "badgesEarned": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["userId", "createdAt", "lessonType", "description"]
+    },
+    "Feedback": {
+      "title": "Feedback",
+      "description": "Peer or supervisor feedback on a reflection",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "reflectionId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "rating": { "type": "number" },
+        "isSupervisor": { "type": "boolean" }
+      },
+      "required": ["reflectionId", "authorId", "content", "createdAt"]
+    },
+    "Invitation": {
+      "title": "Invitation",
+      "description": "An invitation sent to a collaborator",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["peer", "supervisor"] },
+        "status": { "type": "string", "enum": ["pending", "accepted"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "email", "role", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile documents"
+    },
+    "/reflections/{reflectionId}": {
+      "schema": "Reflection",
+      "description": "Reflection documents"
+    },
+    "/reflections/{reflectionId}/feedback/{feedbackId}": {
+      "schema": "Feedback",
+      "description": "Feedback on specific reflections"
+    },
+    "/invitations/{invitationId}": {
+      "schema": "Invitation",
+      "description": "Invitations sent to collaborators"
+    }
+  }
+}
