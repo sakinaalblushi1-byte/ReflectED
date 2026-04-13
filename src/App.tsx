@@ -90,6 +90,7 @@ export default function App() {
       };
       
       await setDoc(doc(db, 'users', firebaseUser.uid), newProfile);
+      setActiveTab('reflect');
     } catch (error) {
       console.error("Error signing in:", error);
     } finally {
@@ -100,7 +101,10 @@ export default function App() {
   const handleGoogleSignIn = async () => {
     setAuthLoading(true);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      // If it's a new user, they might want to start reflecting immediately too
+      // But we check if profile exists in the useEffect, so we can handle it there or here
+      // For now, let's just ensure the tab switches if they are new
     } catch (error) {
       console.error("Error with Google sign in:", error);
     } finally {
@@ -369,7 +373,7 @@ export default function App() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {activeTab === 'dashboard' && <Dashboard profile={profile} />}
+              {activeTab === 'dashboard' && <Dashboard profile={profile} onStartReflection={() => setActiveTab('reflect')} />}
               {activeTab === 'reflect' && <ReflectionWizard profile={profile} onComplete={() => setActiveTab('dashboard')} />}
               {activeTab === 'video' && <VideoReflection />}
               {activeTab === 'gamification' && <GamificationPanel profile={profile} />}

@@ -6,13 +6,13 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, ReflectionData } from '../types';
 import { ReflectionDepthChart, SkillGrowthChart } from './AnalyticsCharts';
-import { TrendingUp, Award, Zap, Calendar, ArrowUpRight, MessageSquare, Plus, Zap as ZapIcon, Loader2 } from 'lucide-react';
+import { TrendingUp, Award, Zap, Calendar, ArrowUpRight, MessageSquare, Plus, Zap as ZapIcon, Loader2, PenTool } from 'lucide-react';
 import { cn } from '../lib/utils';
 import QuickReflection from './QuickReflection';
 import { db } from '../lib/firebase';
 import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 
-export default function Dashboard({ profile }: { profile: UserProfile | null }) {
+export default function Dashboard({ profile, onStartReflection }: { profile: UserProfile | null, onStartReflection: () => void }) {
   const [showQuickReflect, setShowQuickReflect] = useState(false);
   const [reflections, setReflections] = useState<ReflectionData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,8 +83,15 @@ export default function Dashboard({ profile }: { profile: UserProfile | null }) 
         </div>
         <div className="flex items-center gap-3">
           <button 
+            onClick={onStartReflection}
+            className="px-6 py-3 bg-primary-600 text-white rounded-2xl flex items-center gap-2 font-bold shadow-xl shadow-primary-200 hover:bg-primary-700 transition-all transform hover:scale-105"
+          >
+            <PenTool size={20} />
+            Start Full Reflection
+          </button>
+          <button 
             onClick={() => setShowQuickReflect(true)}
-            className="px-4 py-2 bg-amber-500 text-white rounded-xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-amber-200 hover:bg-amber-600 transition-all"
+            className="px-4 py-3 bg-amber-500 text-white rounded-2xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-amber-200 hover:bg-amber-600 transition-all"
           >
             <ZapIcon size={16} />
             Quick Reflect
