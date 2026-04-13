@@ -27,6 +27,7 @@ export default function App() {
   
   // Auth State
   const [guestName, setGuestName] = useState('');
+  const [collegeId, setCollegeId] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
   useEffect(() => {
@@ -40,7 +41,7 @@ export default function App() {
 
   const handleStart = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!guestName.trim()) return;
+    if (!guestName.trim() || !collegeId.trim()) return;
     
     setAuthLoading(true);
     // Simulate a short delay for better UX
@@ -50,6 +51,7 @@ export default function App() {
         uid,
         email: 'guest@reflected.app',
         displayName: guestName,
+        collegeId: collegeId,
         photoURL: null,
         level: 1,
         xp: 0,
@@ -74,6 +76,7 @@ export default function App() {
     setProfile(null);
     setActiveTab('dashboard');
     setGuestName('');
+    setCollegeId('');
   };
 
   if (loading) {
@@ -118,21 +121,35 @@ export default function App() {
           </div>
 
           <form onSubmit={handleStart} className="space-y-4 pt-8">
-            <div className="relative">
-              <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-              <input
-                type="text"
-                placeholder="Enter your name"
-                required
-                value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
-                className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all text-lg"
-              />
+            <div className="space-y-4">
+              <div className="relative">
+                <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <input
+                  type="text"
+                  placeholder="Full Name"
+                  required
+                  value={guestName}
+                  onChange={(e) => setGuestName(e.target.value)}
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all text-lg"
+                />
+              </div>
+
+              <div className="relative">
+                <Award className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <input
+                  type="text"
+                  placeholder="College ID"
+                  required
+                  value={collegeId}
+                  onChange={(e) => setCollegeId(e.target.value)}
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all text-lg"
+                />
+              </div>
             </div>
 
             <button
               type="submit"
-              disabled={authLoading || !guestName.trim()}
+              disabled={authLoading || !guestName.trim() || !collegeId.trim()}
               className="w-full py-4 px-8 bg-primary-600 hover:bg-primary-700 text-white rounded-2xl font-bold text-xl shadow-xl shadow-primary-200 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-3"
             >
               {authLoading ? (
@@ -215,7 +232,7 @@ export default function App() {
               />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-slate-900 truncate">{profile?.displayName}</p>
-                <p className="text-xs text-slate-500">Level {profile?.level} Trainee</p>
+                <p className="text-xs text-slate-500 truncate">ID: {profile?.collegeId}</p>
               </div>
             </div>
             <button
